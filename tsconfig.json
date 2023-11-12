@@ -100,7 +100,7 @@
   },
   "exclude": [
 		"node_modules",
-    "src/__test__",
+    "**/**.test.ts",
   ],
   "ts-node": {
     "esm": true
