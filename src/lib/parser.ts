@@ -1,10 +1,19 @@
+import {
+  NbtByte,
+  NbtDouble,
+  NbtFloat,
+  NbtInt,
+  NbtLong,
+  NbtShort
+} from './NbtType.js'
+
 interface ParserReturn<T> {
   unParsedStr: string
   parsedData: T
   usedLength: number
 }
 
-type ValueType = string | number | object | unknown[]
+export type ValueType = string | number | object | unknown[]
 
 function nbtDataKeyParser (str: string): ParserReturn<string> {
   const startLength = str.search(/\S/)
@@ -45,7 +54,55 @@ function nbtDataKeyParser (str: string): ParserReturn<string> {
   throw new Error('Key end not found.')
 }
 
-function nbtDataValueParser (str: string): ParserReturn<ValueType> {
+type NbtDataValueType =
+  | typeof NbtByte
+  | typeof NbtShort
+  | typeof NbtInt
+  | typeof NbtLong
+  | typeof NbtFloat
+  | typeof NbtDouble
+
+function parseNbtData (
+  str: string,
+  startLength: number,
+  i: number,
+  isAlphabet: boolean,
+  NbtType: typeof NbtByte | typeof NbtShort | typeof NbtInt | typeof NbtLong
+): ParserReturn<ValueType> {
+  const len = i + (isAlphabet ? 1 : 0)
+  return {
+    unParsedStr: str.slice(len),
+    parsedData: new NbtType(Number(str.slice(startLength, i))),
+    usedLength: len
+  }
+}
+
+function determineValueType (
+  str: string,
+  i: number,
+  specifyType: NbtDataValueType | null
+): NbtDataValueType {
+  const typeChar = str[i].toLowerCase()
+  const typeMap: { [key: string]: NbtDataValueType | undefined } = {
+    d: NbtDouble,
+    b: NbtByte,
+    s: NbtShort,
+    f: NbtFloat,
+    l: NbtLong
+  }
+  const specifyTypeChar = typeMap[typeChar] ?? null
+  if (specifyType !== null) {
+    if (specifyTypeChar !== null && specifyType !== specifyTypeChar) {
+      throw new Error('Value type mismatch.')
+    }
+  }
+  return specifyTypeChar ?? specifyType ?? NbtInt
+}
+
+function nbtDataValueParser (
+  str: string,
+  specifyType: NbtDataValueType | null
+): ParserReturn<ValueType> {
   const startLength = str.search(/\S/)
   if (startLength === -1) {
     throw new Error('Key not found.')
@@ -77,51 +134,15 @@ function nbtDataValueParser (str: string): ParserReturn<ValueType> {
       if (str[i].match(/^[0-9.]$/) != null) {
         continue
       }
-      if (str[i] === 'd' || str[i] === 'D') {
-        // double
-        return {
-          unParsedStr: str.slice(i + 1),
-          parsedData: Number(str.slice(startLength, i)),
-          usedLength: i + 1
-        }
-      }
-      if (str[i] === 'b' || str[i] === 'B') {
-        // 8bit. -128 ~ 127
-        return {
-          unParsedStr: str.slice(i + 1),
-          parsedData: Number(str.slice(startLength, i)),
-          usedLength: i + 1
-        }
-      }
-      if (str[i] === 's' || str[i] === 'S') {
-        // short. -32768 ~ 32767
-        return {
-          unParsedStr: str.slice(i + 1),
-          parsedData: Number(str.slice(startLength, i)),
-          usedLength: i + 1
-        }
-      }
-      if (str[i] === 'f' || str[i] === 'F') {
-        // float
-        return {
-          unParsedStr: str.slice(i + 1),
-          parsedData: Number(str.slice(startLength, i)),
-          usedLength: i + 1
-        }
-      }
-      if (str[i] === 'l' || str[i] === 'L') {
-        // long
-        return {
-          unParsedStr: str.slice(i + 1),
-          parsedData: Number(str.slice(startLength, i)),
-          usedLength: i + 1
-        }
-      }
-      return {
-        unParsedStr: str.slice(i),
-        parsedData: Number(str.slice(startLength, i)),
-        usedLength: i
-      }
+      const determinedType = determineValueType(str, i, specifyType)
+      const isAlphabet = str[i].match(/^[a-z]$/i) != null
+      return parseNbtData(
+        str,
+        startLength,
+        i,
+        isAlphabet,
+        determinedType
+      )
     }
   }
   throw new Error('Value type not found.' + str)
@@ -136,13 +157,16 @@ function nbtDataArrayParser (str: string): ParserReturn<unknown[]> {
   if (firstStr !== '[') {
     throw new Error('Array element not found.')
   }
-  const firstLength =
-    startLength +
-    (['[B;', '[I;', '[L;'].findIndex(
-      v => str.slice(startLength, startLength + v.length) === v
-    ) !== -1
-      ? 3
-      : 1)
+  const listType = (
+    [
+      { type: NbtByte, prefix: '[B;' },
+      { type: NbtInt, prefix: '[I;' },
+      { type: NbtLong, prefix: '[L;' }
+    ] as const
+  ).find(
+    v => str.slice(startLength, startLength + v.prefix.length) === v.prefix
+  )?.type
+  const firstLength = startLength + (listType !== undefined ? 3 : 1)
   const arr: unknown[] = []
   let value: ValueType = ''
   for (let i = firstLength; i < str.length; i += 1) {
@@ -166,7 +190,7 @@ function nbtDataArrayParser (str: string): ParserReturn<unknown[]> {
         usedLength: i + 1
       }
     }
-    const result = nbtDataValueParser(str.slice(i))
+    const result = nbtDataValueParser(str.slice(i), listType ?? null)
     value = result.parsedData
     i += result.usedLength - 1
   }
@@ -208,7 +232,7 @@ function nbtDataObjectParser (str: string): ParserReturn<object> {
       continue
     }
     if (checkType === 'value') {
-      const result = nbtDataValueParser(str.slice(i))
+      const result = nbtDataValueParser(str.slice(i), null)
       value = result.parsedData
       i += result.usedLength - 1
       checkType = 'valueEnd'
@@ -235,7 +259,7 @@ function nbtDataObjectParser (str: string): ParserReturn<object> {
 export function nbtDataParser (str: string): ValueType {
   const firstStr = str[0]
   if (!(firstStr === '{' || firstStr === '[')) {
-    return nbtDataValueParser(str).parsedData
+    return nbtDataValueParser(str, null).parsedData
   }
   const result =
     firstStr === '{' ? nbtDataObjectParser(str) : nbtDataArrayParser(str)
