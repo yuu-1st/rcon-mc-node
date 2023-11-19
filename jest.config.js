@@ -2,5 +2,8 @@
 export default {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  coverageDirectory: 'coverage'
+  coverageDirectory: 'coverage',
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': '$1'
+  }
 }
