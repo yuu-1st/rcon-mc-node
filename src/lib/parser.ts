@@ -1,21 +1,34 @@
 import {
   NbtByte,
+  NbtByteArray,
+  NbtClass,
+  NbtCompound,
   NbtDouble,
   NbtFloat,
   NbtInt,
+  NbtIntArray,
+  NbtList,
   NbtLong,
-  NbtShort
+  NbtLongArray,
+  NbtShort,
+  NbtString
 } from './NbtType.js'
 
-interface ParserReturn<T> {
+interface ParserReturn<T extends NbtClass> {
   unParsedStr: string
   parsedData: T
   usedLength: number
 }
 
-export type ValueType = string | number | object | unknown[]
+interface ParserKeyReturn {
+  unParsedStr: string
+  parsedData: string
+  usedLength: number
+}
 
-function nbtDataKeyParser (str: string): ParserReturn<string> {
+export type ValueType = string | object | unknown[]
+
+function nbtDataKeyParser (str: string): ParserKeyReturn {
   const startLength = str.search(/\S/)
   if (startLength === -1) {
     throw new Error('Key not found.')
@@ -68,7 +81,7 @@ function parseNbtData (
   i: number,
   isAlphabet: boolean,
   NbtType: typeof NbtByte | typeof NbtShort | typeof NbtInt | typeof NbtLong
-): ParserReturn<ValueType> {
+): ParserReturn<NbtClass> {
   const len = i + (isAlphabet ? 1 : 0)
   return {
     unParsedStr: str.slice(len),
@@ -102,7 +115,7 @@ function determineValueType (
 function nbtDataValueParser (
   str: string,
   specifyType: NbtDataValueType | null
-): ParserReturn<ValueType> {
+): ParserReturn<NbtClass> {
   const startLength = str.search(/\S/)
   if (startLength === -1) {
     throw new Error('Key not found.')
@@ -114,7 +127,7 @@ function nbtDataValueParser (
       if (str[i] === '"') {
         return {
           unParsedStr: str.slice(i + 1),
-          parsedData: str.slice(startLength + 1, i),
+          parsedData: new NbtString(str.slice(startLength + 1, i)),
           usedLength: i + 1
         }
       } else if (str[i] === '\\') {
@@ -136,19 +149,17 @@ function nbtDataValueParser (
       }
       const determinedType = determineValueType(str, i, specifyType)
       const isAlphabet = str[i].match(/^[a-z]$/i) != null
-      return parseNbtData(
-        str,
-        startLength,
-        i,
-        isAlphabet,
-        determinedType
-      )
+      return parseNbtData(str, startLength, i, isAlphabet, determinedType as any)
     }
   }
   throw new Error('Value type not found.' + str)
 }
 
-function nbtDataArrayParser (str: string): ParserReturn<unknown[]> {
+function nbtDataArrayParser (
+  str: string
+): ParserReturn<
+  NbtList<any, NbtClass> | NbtByteArray | NbtIntArray | NbtLongArray
+  > {
   const startLength = str.search(/\S/)
   if (startLength === -1) {
     throw new Error('Key not found.')
@@ -159,45 +170,53 @@ function nbtDataArrayParser (str: string): ParserReturn<unknown[]> {
   }
   const listType = (
     [
-      { type: NbtByte, prefix: '[B;' },
-      { type: NbtInt, prefix: '[I;' },
-      { type: NbtLong, prefix: '[L;' }
+      { type: NbtByte, TypeArray: NbtByteArray, prefix: '[B;' },
+      { type: NbtInt, TypeArray: NbtIntArray, prefix: '[I;' },
+      { type: NbtLong, TypeArray: NbtLongArray, prefix: '[L;' },
+      { type: undefined, TypeArray: NbtList, prefix: '[' }
     ] as const
   ).find(
     v => str.slice(startLength, startLength + v.prefix.length) === v.prefix
-  )?.type
-  const firstLength = startLength + (listType !== undefined ? 3 : 1)
-  const arr: unknown[] = []
-  let value: ValueType = ''
+  )
+  if (listType === undefined) {
+    throw new Error('Array type not found.')
+  }
+  const firstLength = startLength + (listType.prefix.length)
+  const arr: NbtClass[] = []
+  let value: NbtClass = undefined as any
+  // console.log('parser start.', str, firstLength)
   for (let i = firstLength; i < str.length; i += 1) {
     if (str[i] === ' ' || str[i] === '\n') {
       continue
     }
     if (str[i] === ',') {
-      if (value !== '') {
+      if (value !== undefined) {
         arr.push(value)
-        value = ''
+        value = undefined as any
+      } else {
+        console.log('Value not found.' + str.slice(i))
       }
       continue
     }
     if (str[i] === ']') {
-      if (value !== '') {
+      if (value !== undefined) {
         arr.push(value)
       }
       return {
         unParsedStr: str.slice(i + 1),
-        parsedData: arr,
+        parsedData: new listType.TypeArray(arr as any),
         usedLength: i + 1
       }
     }
-    const result = nbtDataValueParser(str.slice(i), listType ?? null)
+    const result = nbtDataValueParser(str.slice(i), listType.type ?? null)
+    // console.log(result, i)
     value = result.parsedData
     i += result.usedLength - 1
   }
   throw new Error('Array end not found.')
 }
 
-function nbtDataObjectParser (str: string): ParserReturn<object> {
+function nbtDataObjectParser (str: string): ParserReturn<NbtCompound> {
   const startLength = str.search(/\S/)
   if (startLength === -1) {
     throw new Error('Key not found.')
@@ -206,9 +225,9 @@ function nbtDataObjectParser (str: string): ParserReturn<object> {
   if (firstStr !== '{') {
     throw new Error('Object element not found.')
   }
-  const obj: { [key: string]: ValueType } = {}
+  const obj: { [key: string]: NbtClass } = {}
   let key = ''
-  let value: ValueType = ''
+  let value: NbtClass = undefined as any
   let checkType: 'key' | 'value' | 'valueEnd' = 'key'
   for (let i = startLength + 1; i < str.length; i += 1) {
     const char = str[i]
@@ -220,7 +239,7 @@ function nbtDataObjectParser (str: string): ParserReturn<object> {
       }
       return {
         unParsedStr: str.slice(i + 1),
-        parsedData: obj,
+        parsedData: new NbtCompound(obj),
         usedLength: i + 1
       }
     }
@@ -242,7 +261,7 @@ function nbtDataObjectParser (str: string): ParserReturn<object> {
       if (char === ',') {
         obj[key] = value
         key = ''
-        value = ''
+        value = undefined as any
         checkType = 'key'
         continue
       }
@@ -256,7 +275,7 @@ function nbtDataObjectParser (str: string): ParserReturn<object> {
  * @param str NBT data
  * @returns parsed result
  */
-export function nbtDataParser (str: string): ValueType {
+export function nbtDataParser (str: string): NbtClass {
   const firstStr = str[0]
   if (!(firstStr === '{' || firstStr === '[')) {
     return nbtDataValueParser(str, null).parsedData

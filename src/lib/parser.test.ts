@@ -1,4 +1,4 @@
-import { NbtByte, NbtDouble, NbtFloat, NbtInt, NbtShort } from './NbtType.js'
+import { NbtByte, NbtByteArray, NbtCompound, NbtDouble, NbtFloat, NbtInt, NbtIntArray, NbtList, NbtShort, NbtString } from './NbtType.js'
 import { _test_, nbtDataParser } from './parser.js'
 
 describe('key', () => {
@@ -46,7 +46,7 @@ describe('key', () => {
       ' "bar"',
       {
         unParsedStr: '',
-        parsedData: 'bar',
+        parsedData: new NbtString('bar'),
         usedLength: 6
       }
     ],
@@ -54,7 +54,7 @@ describe('key', () => {
       '"bar", "baz"',
       {
         unParsedStr: ', "baz"',
-        parsedData: 'bar',
+        parsedData: new NbtString('bar'),
         usedLength: 5
       }
     ],
@@ -93,7 +93,7 @@ describe('key', () => {
       '[1, 2, 3]',
       {
         unParsedStr: '',
-        parsedData: [new NbtInt(1), new NbtInt(2), new NbtInt(3)],
+        parsedData: new NbtList([new NbtInt(1), new NbtInt(2), new NbtInt(3)]),
         usedLength: 9
       }
     ],
@@ -101,7 +101,7 @@ describe('key', () => {
       '[1, 2, 3], [4, 5, 6]',
       {
         unParsedStr: ', [4, 5, 6]',
-        parsedData: [new NbtInt(1), new NbtInt(2), new NbtInt(3)],
+        parsedData: new NbtList([new NbtInt(1), new NbtInt(2), new NbtInt(3)]),
         usedLength: 9
       }
     ],
@@ -109,7 +109,7 @@ describe('key', () => {
       '[B; 1, 2, 3]',
       {
         unParsedStr: '',
-        parsedData: [new NbtByte(1), new NbtByte(2), new NbtByte(3)],
+        parsedData: new NbtByteArray([new NbtByte(1), new NbtByte(2), new NbtByte(3)]),
         usedLength: 12
       }
     ]
@@ -124,7 +124,7 @@ describe('key', () => {
       '{foo:"bar"}',
       {
         unParsedStr: '',
-        parsedData: { foo: 'bar' },
+        parsedData: new NbtCompound({ foo: new NbtString('bar') }),
         usedLength: 11
       }
     ],
@@ -132,7 +132,7 @@ describe('key', () => {
       '{foo:"bar"}, {baz:"qux"}',
       {
         unParsedStr: ', {baz:"qux"}',
-        parsedData: { foo: 'bar' },
+        parsedData: new NbtCompound({ foo: new NbtString('bar') }),
         usedLength: 11
       }
     ]
@@ -145,58 +145,58 @@ describe('key', () => {
   describe.each([
     [
       '{Brain: {memories: {}}, HurtByTimestamp: 0, SleepTimer: 0s}',
-      {
-        Brain: { memories: {} },
+      new NbtCompound({
+        Brain: new NbtCompound({ memories: new NbtCompound({}) }),
         HurtByTimestamp: new NbtInt(0),
         SleepTimer: new NbtShort(0)
-      }
+      })
     ],
     [
       '{Attributes: [{Base: 0.10000000149011612d, Name: "minecraft:generic.movement_speed"}]}',
-      {
-        Attributes: [
-          {
+      new NbtCompound({
+        Attributes: new NbtList([
+          new NbtCompound({
             Base: new NbtDouble(0.10000000149011612),
-            Name: 'minecraft:generic.movement_speed'
-          }
-        ]
-      }
+            Name: new NbtString('minecraft:generic.movement_speed')
+          })
+        ])
+      })
     ],
     [
       '{warden_spawn_tracker: {warning_level: 0, ticks_since_last_warning: 1921, cooldown_ticks: 0}}',
-      {
-        warden_spawn_tracker: {
+      new NbtCompound({
+        warden_spawn_tracker: new NbtCompound({
           warning_level: new NbtInt(0),
           ticks_since_last_warning: new NbtInt(1921),
           cooldown_ticks: new NbtInt(0)
-        }
-      }
+        })
+      })
     ],
     [
       '{UUID: [I; -1180357045, 2050965858, -1402996988, -1150411163]}',
-      {
-        UUID: [
+      new NbtCompound({
+        UUID: new NbtIntArray([
           new NbtInt(-1180357045),
           new NbtInt(2050965858),
           new NbtInt(-1402996988),
           new NbtInt(-1150411163)
-        ]
-      }
+        ])
+      })
     ],
     [
       '[{Slot: 6b, id: "minecraft:smooth_basalt", Count: 1b}, {Slot: 8b, id: "minecraft:calcite", Count: 1b}]',
-      [
-        {
+      new NbtList([
+        new NbtCompound({
           Slot: new NbtByte(6),
-          id: 'minecraft:smooth_basalt',
+          id: new NbtString('minecraft:smooth_basalt'),
           Count: new NbtByte(1)
-        },
-        {
+        }),
+        new NbtCompound({
           Slot: new NbtByte(8),
-          id: 'minecraft:calcite',
+          id: new NbtString('minecraft:calcite'),
           Count: new NbtByte(1)
-        }
-      ]
+        })
+      ])
     ]
   ])('nbtData(%s)', (str, expected) => {
     test('returns expected', () => {
